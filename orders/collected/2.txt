@@ -1,0 +1,10 @@
+Order ID: 2 
+State: Collected
+OrderedDateTime: 2026-01-29 10:18:50 
+ProgressingDateTime: 2026-01-29 11:00:57
+CollectedDateTime: 2026-01-29 11:01:09
+Items:
+ 0010    USB4 drive         (108) £1078.92
+--------------------------------------------
+ Total                               £1078.92
+

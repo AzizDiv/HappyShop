@@ -26,19 +26,39 @@ public class CustomerClient extends Application {
      */
     @Override
     public void start(Stage window) {
+        DatabaseRW databaseRW = DatabaseRWFactory.createDatabaseRW();
+        ci553.happyshop.security.AuthService authService = new ci553.happyshop.security.AuthService(databaseRW);
+
+        // Show login dialog first
+        ci553.happyshop.client.auth.LoginDialog loginDialog = new ci553.happyshop.client.auth.LoginDialog(authService);
+        ci553.happyshop.security.User user = loginDialog.showAndWait();
+        if (user == null) {
+            System.out.println("Login cancelled or failed. Exiting.");
+            return;
+        }
+
+        // Save session
+        ci553.happyshop.security.UserSession.get().setUser(user);
+
+        // Proceed as before
         CustomerView cusView = new CustomerView();
         CustomerController cusController = new CustomerController();
         CustomerModel cusModel = new CustomerModel();
-        DatabaseRW databaseRW = DatabaseRWFactory.createDatabaseRW();
 
         cusView.cusController = cusController;
         cusController.cusModel = cusModel;
         cusModel.cusView = cusView;
         cusModel.databaseRW = databaseRW;
-        cusView.start(window);
 
-        //RemoveProductNotifier removeProductNotifier = new RemoveProductNotifier();
-        //removeProductNotifier.cusView = cusView;
-        //cusModel.removeProductNotifier = removeProductNotifier;
+        RemoveProductNotifier removeProductNotifier = new RemoveProductNotifier();
+        removeProductNotifier.cusView = cusView;
+        cusModel.removeProductNotifier = removeProductNotifier;
+
+        // Optionally show username in window title
+        window.setTitle("🛒 HappyShop Customer Client - Logged in as: " + user.getUsername());
+
+        cusView.start(window);
     }
+
+
 }

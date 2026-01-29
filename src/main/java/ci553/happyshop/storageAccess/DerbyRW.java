@@ -6,6 +6,9 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import ci553.happyshop.security.User;
+import java.sql.Timestamp;
+import java.time.Instant;
 
 /** ProductTable definition
  * "CREATE TABLE ProductTable(" +
@@ -342,5 +345,63 @@ public class DerbyRW implements DatabaseRW {
             lock.unlock(); // Always release the lock after the operation
         }
     }
+
+    @Override
+    public boolean createUser(String username, String passwordHash, String role) throws SQLException {
+        String sql = "INSERT INTO UserTable (username, passwordHash, role, createdAt) VALUES (?, ?, ?, CURRENT_TIMESTAMP)";
+        try (Connection conn = DriverManager.getConnection(dbURL);
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, username);
+            ps.setString(2, passwordHash);
+            ps.setString(3, role);
+            int rows = ps.executeUpdate();
+            return rows == 1;
+        } catch (SQLException e) {
+            System.out.println("createUser error: " + e.getMessage());
+            throw e;
+        }
+    }
+
+    @Override
+    public User findUserByUsername(String username) throws SQLException {
+        String sql = "SELECT userId, username, passwordHash, role, createdAt FROM UserTable WHERE username = ?";
+        try (Connection conn = DriverManager.getConnection(dbURL);
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, username);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    User u = new User();
+                    u.setUserId(rs.getInt("userId"));
+                    u.setUsername(rs.getString("username"));
+                    u.setPasswordHash(rs.getString("passwordHash"));
+                    u.setRole(rs.getString("role"));
+                    Timestamp ts = rs.getTimestamp("createdAt");
+                    if (ts != null) u.setCreatedAt(ts.toInstant());
+                    return u;
+                } else {
+                    return null;
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println("findUserByUsername error: " + e.getMessage());
+            throw e;
+        }
+    }
+
+    @Override
+    public boolean updateUserPassword(String username, String newPasswordHash) throws SQLException {
+        String sql = "UPDATE UserTable SET passwordHash = ? WHERE username = ?";
+        try (Connection conn = DriverManager.getConnection(dbURL);
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, newPasswordHash);
+            ps.setString(2, username);
+            int rows = ps.executeUpdate();
+            return rows == 1;
+        } catch (SQLException e) {
+            System.out.println("updateUserPassword error: " + e.getMessage());
+            throw e;
+        }
+    }
+
 
 }

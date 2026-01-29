@@ -2,6 +2,7 @@ package ci553.happyshop.systemSetup;
 
 import ci553.happyshop.storageAccess.DatabaseRWFactory;
 import ci553.happyshop.utility.StorageLocation;
+import org.mindrot.jbcrypt.BCrypt;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -28,30 +29,28 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class SetDatabase {
 
-    //Use the shared database URL from the factory, appending `;create=true` to create the database if it doesn't exist
+    // Use the shared database URL from the factory, appending `;create=true` to create the database if it doesn't exist
     private static final String dbURL = DatabaseRWFactory.dbURL + ";create=true";
-                                  //the value is "jdbc:derby:happyShopDB;create=true"
+    // the value is "jdbc:derby:happyShopDB;create=true"
 
     private static Path imageWorkingFolderPath = StorageLocation.imageFolderPath;
     private static Path imageBackupFolderPath = StorageLocation.imageResetFolderPath;
 
-    private String[] tables = {"ProductTable"};
-    // Currently only "ProductTable" exists, but using an array allows easy expansion
-    // if more tables need to be processed in the future without changing the logic structure.
+    private String[] tables = {"ProductTable", "UserTable"};
+    // Updated to include both tables
 
     private static final Lock lock = new ReentrantLock();    // Create a global lock
 
     public static void main(String[] args) throws SQLException, IOException {
         SetDatabase setDB = new SetDatabase();
         setDB.clearTables(); // clear all tables in the tables array from database if they are existing
-        setDB.initializeTable();//create and initialize databse and tables
+        setDB.initializeTable(); // create and initialize database and tables
         setDB.queryTableAfterInitilization();
         deleteFilesInFolder(imageWorkingFolderPath);
         copyFolderContents(imageBackupFolderPath, imageWorkingFolderPath);
-
     }
 
-    //Deletes all existing tables in the database.
+    // Deletes all existing tables in the database.
     private void clearTables() throws SQLException {
         lock.lock();  // 🔒 Lock first
         try (Connection con = DriverManager.getConnection(dbURL);
@@ -68,16 +67,16 @@ public class SetDatabase {
                     }
                 }
             }
-        }
-        finally {
+        } finally {
             lock.unlock();  // 🔓 Always unlock in finally block
         }
     }
-    //Recreates the database tables Inserts default values into the newly created tables.
+
+    // Recreates the database tables Inserts default values into the newly created tables.
     private void initializeTable() throws SQLException {
         lock.lock(); // Lock to ensure thread safety
 
-        // Table creation and insert statements
+        // Table creation and insert statements for ProductTable
         String[] iniTableSQL = {
                 // Create ProductTable
                 "CREATE TABLE ProductTable(" +
@@ -108,6 +107,41 @@ public class SetDatabase {
             System.out.println("Database happyShopDB is created successfully!");
             connection.setAutoCommit(false); // Disable auto-commit for the batch
 
+            // Create UserTable first
+            try (Statement userStatement = connection.createStatement()) {
+                try {
+                    userStatement.executeUpdate(
+                            "CREATE TABLE UserTable (" +
+                                    "userId INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, " +
+                                    "username VARCHAR(50) UNIQUE NOT NULL, " +
+                                    "passwordHash VARCHAR(200) NOT NULL, " +
+                                    "role VARCHAR(20) NOT NULL, " +
+                                    "createdAt TIMESTAMP" +
+                                    ")");
+                    System.out.println("UserTable created.");
+                } catch (SQLException e) {
+                    // If table already exists, Derby throws error; just skip
+                    System.out.println("UserTable might already exist: " + e.getMessage());
+                }
+            }
+
+            // Insert a seeded admin user
+            try (PreparedStatement psInsert = connection.prepareStatement(
+                    "INSERT INTO UserTable (username, passwordHash, role, createdAt) VALUES (?, ?, ?, CURRENT_TIMESTAMP)")) {
+                String defaultAdminPassword = "admin123";
+                String hashed = BCrypt.hashpw(defaultAdminPassword, BCrypt.gensalt(12));
+
+                psInsert.setString(1, "admin");
+                psInsert.setString(2, hashed);
+                psInsert.setString(3, "ADMIN");
+                psInsert.executeUpdate();
+                System.out.println("Seeded admin user created (username=admin).");
+            } catch (SQLException e) {
+                // If admin exists already, skip insertion
+                System.out.println("Admin user insertion skipped or failed: " + e.getMessage());
+            }
+
+            // Create ProductTable and insert data
             try (Statement statement = connection.createStatement()) {
                 // First, create the table (DDL) - Execute this one separately from DML
                 statement.executeUpdate(iniTableSQL[0]);  // Execute Create Table SQL
@@ -135,32 +169,47 @@ public class SetDatabase {
 
     private void queryTableAfterInitilization() throws SQLException {
         lock.lock();
-        //Query ProductTable
-        String sqlQuery = "SELECT * FROM ProductTable";
 
-        System.out.println("-------------Product Information Below -----------------");
-        String title = String.format("%-12s %-20s %-10s %-10s %s",
-                "productID",
-                "description",
-                "unitPrice",
-                "inStock",
-                "image");
-        System.out.println(title);  // Print formatted output
+        try (Connection connection = DriverManager.getConnection(dbURL)) {
+            // Query ProductTable
+            String sqlQuery = "SELECT * FROM ProductTable";
 
-        try (Connection connection = DriverManager.getConnection(dbURL);
-             Statement stat = connection.createStatement()){
-            ResultSet resultSet = stat.executeQuery(sqlQuery);
-            while (resultSet.next()) {
-                String productID = resultSet.getString("productID");
-                String description = resultSet.getString("description");
-                double unitPrice = resultSet.getDouble("unitPrice");
-                String image = resultSet.getString("image");
-                int inStock = resultSet.getInt("inStock");
-                String record = String.format("%-12s %-20s %-10.2f %-10d %s", productID, description, unitPrice, inStock, image);
-                System.out.println(record);  // Print formatted output
+            System.out.println("-------------Product Information Below -----------------");
+            String title = String.format("%-12s %-20s %-10s %-10s %s",
+                    "productID",
+                    "description",
+                    "unitPrice",
+                    "inStock",
+                    "image");
+            System.out.println(title);  // Print formatted output
+
+            try (Statement stat = connection.createStatement()) {
+                ResultSet resultSet = stat.executeQuery(sqlQuery);
+                while (resultSet.next()) {
+                    String productID = resultSet.getString("productID");
+                    String description = resultSet.getString("description");
+                    double unitPrice = resultSet.getDouble("unitPrice");
+                    String image = resultSet.getString("image");
+                    int inStock = resultSet.getInt("inStock");
+                    String record = String.format("%-12s %-20s %-10.2f %-10d %s", productID, description, unitPrice, inStock, image);
+                    System.out.println(record);  // Print formatted output
+                }
             }
-        }
-        finally {
+
+            // Also query UserTable to show admin user
+            System.out.println("\n-------------User Information Below -----------------");
+            try (Statement stat = connection.createStatement()) {
+                ResultSet resultSet = stat.executeQuery("SELECT userId, username, role, createdAt FROM UserTable");
+                while (resultSet.next()) {
+                    int userId = resultSet.getInt("userId");
+                    String username = resultSet.getString("username");
+                    String role = resultSet.getString("role");
+                    Timestamp createdAt = resultSet.getTimestamp("createdAt");
+                    System.out.printf("User ID: %d, Username: %s, Role: %s, Created: %s%n",
+                            userId, username, role, createdAt);
+                }
+            }
+        } finally {
             lock.unlock();
         }
     }
@@ -173,7 +222,7 @@ public class SetDatabase {
                 Files.walkFileTree(folder, new SimpleFileVisitor<>() {
                     @Override
                     public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                        Files.delete(file); //delete individual files
+                        Files.delete(file); // delete individual files
                         return FileVisitResult.CONTINUE;
                     }
                 });
@@ -181,31 +230,10 @@ public class SetDatabase {
             } finally {
                 lock.unlock();
             }
-        }
-        else {
+        } else {
             System.out.println("Folder " + folder + " does not exist");
         }
     }
-
-
-    /**
-     * The method Files.walkFileTree(Path, FileVisitor) traverses (or "walks through") a directory and all of its subdirectories.
-     * It accepts two arguments:
-     * 1. directory (Path or folder) path from which the traversal begins (the starting point of the walk).
-     * 2. A FileVisitor object that defines the actions to be performed when a file or directory is visited.
-     *    The visitor is an instance of the FileVisitor interface, which provides methods for handling different events during the traversal.
-     *
-     * Here, we use an anonymous class to create the second argument - the instance (object) –
-     * An anonymous class allows you to extend a superclass (or implement an interface) and instantiate it in a single, concise step,
-     * without needing to define a separate named class. It combines both class extension and object creation into one operation,
-     * typically used when you need a one-off implementation of a class or interface.
-     * (Note: the object is the anonymous class's)
-     *
-     * We did not use Files.walkFileTree(folder, new FileVisitor<>()) because FileVisitor is an interface, and we would need to implement
-     * all of its methods ourselves. Instead, we use Files.walkFileTree(folder, new SimpleFileVisitor<>()) because:
-     * - SimpleFileVisitor<> is an abstract class that implements the FileVisitor interface with default method implementations.
-     * - We only need to override the methods (visitFile, postVisitDirectory) that we're interested in, which simplifies our code.
-     */
 
     // Copies all files from source folder to destination folder
     public static void copyFolderContents(Path source, Path destination) throws IOException {
@@ -220,7 +248,6 @@ public class SetDatabase {
         }
 
         // Copy files from source folder to destination folder
-        //Files.newDirectoryStream(source): list all entries (files and folders) directly in the source directory
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(source)) {
             for (Path file : stream) {
                 if (Files.isRegularFile(file)) {
@@ -228,11 +255,9 @@ public class SetDatabase {
                     Files.copy(file, targetFile, StandardCopyOption.REPLACE_EXISTING);
                 }
             }
-        }
-        finally {
+        } finally {
             lock.unlock();
         }
         System.out.println("Copied files from: " + source + " → " + destination);
     }
-
 }

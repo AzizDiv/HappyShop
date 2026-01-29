@@ -86,6 +86,25 @@ public interface DatabaseRW {
      * @return true if the ID is available, false if it already exists in the database
      */
     boolean isProIdAvailable(String productId) throws SQLException;
+
+
+    // --- user management (auth) ---
+    /**
+     * Create a new user (username must be unique).
+     * passwordHash must already be a secure hash (e.g., BCrypt).
+     */
+    boolean createUser(String username, String passwordHash, String role) throws SQLException;
+
+    /**
+     * Find a user by username. Return null if not found.
+     */
+    ci553.happyshop.security.User findUserByUsername(String username) throws SQLException;
+
+    /**
+     * Update the password hash for the specified username.
+     */
+    boolean updateUserPassword(String username, String newPasswordHash) throws SQLException;
+
 }
 
 

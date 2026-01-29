@@ -14,7 +14,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
-
+import java.util.Comparator;
 /**
  * TODO
  * You can either directly modify the CustomerModel class to implement the required tasks,
@@ -24,6 +24,7 @@ public class CustomerModel {
     public CustomerView cusView;
     public DatabaseRW databaseRW; //Interface type, not specific implementation
                                   //Benefits: Flexibility: Easily change the database implementation.
+    public RemoveProductNotifier removeProductNotifier;
 
     private Product theProduct =null; // product found from search
     private ArrayList<Product> trolley =  new ArrayList<>(); // a list of products in trolley
@@ -63,21 +64,39 @@ public class CustomerModel {
     }
 
     void addToTrolley(){
-        if(theProduct!= null){
+        if (theProduct != null) {
+            String id = theProduct.getProductId();
+            boolean found = false;
 
-            // trolley.add(theProduct) — Product is appended to the end of the trolley.
-            // To keep the trolley organized, add code here or call a method that:
-            //TODO
-            // 1. Merges items with the same product ID (combining their quantities).
-            // 2. Sorts the products in the trolley by product ID.
-            trolley.add(theProduct);
-            displayTaTrolley = ProductListFormatter.buildString(trolley); //build a String for trolley so that we can show it
-        }
-        else{
+            // Try to merge with existing item in trolley
+            for (Product p : trolley) {
+                if (p.getProductId().equals(id)) {
+                    p.setOrderedQuantity(p.getOrderedQuantity() + 1);
+                    found = true;
+                    break;
+                }
+            }
+
+            // If not found, add a shallow copy (orderedQuantity defaults to 1)
+            if (!found) {
+                trolley.add(new Product(
+                        theProduct.getProductId(),
+                        theProduct.getProductDescription(),
+                        theProduct.getProductImageName(),
+                        theProduct.getUnitPrice(),
+                        theProduct.getStockQuantity()
+                ));
+            }
+
+            // Sort trolley by productId (Product implements Comparable)
+            trolley.sort(Comparator.naturalOrder());
+
+            displayTaTrolley = ProductListFormatter.buildString(trolley);
+        } else {
             displayLaSearchResult = "Please search for an available product before adding it to the trolley";
             System.out.println("must search and get an available product before add to trolley");
         }
-        displayTaReceipt=""; // Clear receipt to switch back to trolleyPage (receipt shows only when not empty)
+        displayTaReceipt = ""; // Clear receipt to switch back to trolleyPage (receipt shows only when not empty)
         updateView();
     }
 
@@ -105,25 +124,39 @@ public class CustomerModel {
                 );
                 System.out.println(displayTaReceipt);
             }
-            else{ // Some products have insufficient stock — build an error message to inform the customer
+            else { // Some products have insufficient stock — build an error message to inform the customer
                 StringBuilder errorMsg = new StringBuilder();
-                for(Product p : insufficientProducts){
-                    errorMsg.append("\u2022 "+ p.getProductId()).append(", ")
+                for (Product p : insufficientProducts) {
+                    errorMsg.append("\u2022 ").append(p.getProductId()).append(", ")
                             .append(p.getProductDescription()).append(" (Only ")
                             .append(p.getStockQuantity()).append(" available, ")
                             .append(p.getOrderedQuantity()).append(" requested)\n");
                 }
-                theProduct=null;
+                theProduct = null;
 
-                //TODO
-                // Add the following logic here:
-                // 1. Remove products with insufficient stock from the trolley.
-                // 2. Trigger a message window to notify the customer about the insufficient stock, rather than directly changing displayLaSearchResult.
-                //You can use the provided RemoveProductNotifier class and its showRemovalMsg method for this purpose.
-                //remember close the message window where appropriate (using method closeNotifierWindow() of RemoveProductNotifier class)
-                displayLaSearchResult = "Checkout failed due to insufficient stock for the following products:\n" + errorMsg.toString();
+                // Remove products with insufficient stock from the trolley
+                for (Product bad : insufficientProducts) {
+                    String badId = bad.getProductId();
+                    // Remove any trolley entries with the same productId
+                    trolley.removeIf(t -> t.getProductId().equals(badId));
+                }
+
+                // Update trolley display
+                displayTaTrolley = ProductListFormatter.buildString(trolley);
+
+                // Notify the customer using RemoveProductNotifier when available
+                String removalMsg = "Checkout failed for the following products due to insufficient stock:\n" + errorMsg.toString();
+
+                if (removeProductNotifier != null) {
+                    removeProductNotifier.showRemovalMsg(removalMsg);
+                } else {
+                    // fallback: set the search result label (less preferred)
+                    displayLaSearchResult = removalMsg;
+                }
+
                 System.out.println("stock is not enough");
             }
+
         }
         else{
             displayTaTrolley = "Your trolley is empty";

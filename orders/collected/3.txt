@@ -1,0 +1,11 @@
+Order ID: 3 
+State: Collected
+OrderedDateTime: 2026-01-29 11:00:47 
+ProgressingDateTime: 2026-01-29 11:01:11
+CollectedDateTime: 2026-01-29 11:01:12
+Items:
+ 0002    DAB Radio          ( 1) £  29.99
+ 0010    USB4 drive         (100) £ 999.00
+--------------------------------------------
+ Total                               £1028.99
+
